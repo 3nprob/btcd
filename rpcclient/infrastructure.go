@@ -86,6 +86,10 @@ const (
 	// connectionRetryInterval is the amount of time to wait in between
 	// retries when automatically reconnecting to an RPC server.
 	connectionRetryInterval = time.Second * 5
+
+	// requestRetryInterval is the initial amount of time to wait in between
+	// retries when sending HTTP POST requests.
+	requestRetryInterval = time.Millisecond * 500
 )
 
 // jsonRequest holds information about a json request that is used to properly
@@ -791,7 +795,7 @@ func (c *Client) handleSendPostMessage(jReq *jsonRequest) {
 
 		httpResponse, err = c.httpClient.Do(httpReq)
 		if err != nil {
-			backoff = connectionRetryInterval * time.Duration(i+1)
+			backoff = requestRetryInterval * time.Duration(i+1)
 			if backoff > time.Minute {
 				backoff = time.Minute
 			}

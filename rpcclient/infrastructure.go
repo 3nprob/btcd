@@ -92,7 +92,6 @@ const (
 // as the original JSON-RPC command and a channel to reply on when the server
 // responds with the result.
 type sendPostDetails struct {
-	httpRequest *http.Request
 	jsonRequest *jsonRequest
 }
 
@@ -767,6 +766,16 @@ out:
 // provided response channel.
 func (c *Client) handleSendPostMessage(details *sendPostDetails) {
 	jReq := details.jsonRequest
+
+	protocol := "http"
+	if !c.config.DisableTLS {
+		protocol = "https"
+	}
+	url := protocol + "://" + c.config.Host
+
+
+
+
 	// httpResponse, err := c.httpClient.Do(details.httpRequest)
 	/////////
 	var err error
@@ -775,8 +784,28 @@ func (c *Client) handleSendPostMessage(details *sendPostDetails) {
 	fmt.Println("preloop")
 	tries := 10
 	for i := 0; tries == 0 || i < tries; i++ {
+		bodyReader := bytes.NewReader(jReq.marshalledJSON)
+		httpReq, err := http.NewRequest("POST", url, bodyReader)
+		if err != nil {
+			jReq.responseChan <- &response{result: nil, err: err}
+			return
+		}
+		httpReq.Close = true
+		httpReq.Header.Set("Content-Type", "application/json")
+		for key, value := range c.config.ExtraHeaders {
+			httpReq.Header.Set(key, value)
+		}
+
+		// Configure basic access authorization.
+		user, pass, err := c.config.getAuth()
+		if err != nil {
+			jReq.responseChan <- &response{result: nil, err: err}
+			return
+		}
+		httpReq.SetBasicAuth(user, pass)
 		fmt.Println(fmt.Sprintf("# sending command [%s] with id %d\n", jReq.method, jReq.id))
-		httpResponse, err = c.httpClient.Do(details.httpRequest.Clone(details.httpRequest.Context()))
+
+		httpResponse, err = c.httpClient.Do(httpReq)
 		if err != nil {
 			backoff = connectionRetryInterval * time.Duration(i+1)
 			if backoff > time.Minute {
@@ -872,7 +901,7 @@ cleanup:
 // sendPostRequest sends the passed HTTP request to the RPC server using the
 // HTTP client associated with the client.  It is backed by a buffered channel,
 // so it will not block until the send channel is full.
-func (c *Client) sendPostRequest(httpReq *http.Request, jReq *jsonRequest) {
+func (c *Client) sendPostRequest(jReq *jsonRequest) {
 	// Don't send the message if shutting down.
 	select {
 	case <-c.shutdown:
@@ -880,9 +909,10 @@ func (c *Client) sendPostRequest(httpReq *http.Request, jReq *jsonRequest) {
 	default:
 	}
 
+	log.Tracef("Sending command [%s] with id %d", jReq.method, jReq.id)
+
 	c.sendPostChan <- &sendPostDetails{
 		jsonRequest: jReq,
-		httpRequest: httpReq,
 	}
 }
 
@@ -905,42 +935,6 @@ func receiveFuture(f chan *response) ([]byte, error) {
 	return r.result, r.err
 }
 
-// sendPost sends the passed request to the server by issuing an HTTP POST
-// request using the provided response channel for the reply.  Typically a new
-// connection is opened and closed for each command when using this method,
-// however, the underlying HTTP client might coalesce multiple commands
-// depending on several factors including the remote server configuration.
-func (c *Client) sendPost(jReq *jsonRequest) {
-	// Generate a request to the configured RPC server.
-	protocol := "http"
-	if !c.config.DisableTLS {
-		protocol = "https"
-	}
-	url := protocol + "://" + c.config.Host
-	bodyReader := bytes.NewReader(jReq.marshalledJSON)
-	httpReq, err := http.NewRequest("POST", url, bodyReader)
-	if err != nil {
-		jReq.responseChan <- &response{result: nil, err: err}
-		return
-	}
-	httpReq.Close = true
-	httpReq.Header.Set("Content-Type", "application/json")
-	for key, value := range c.config.ExtraHeaders {
-		httpReq.Header.Set(key, value)
-	}
-
-	// Configure basic access authorization.
-	user, pass, err := c.config.getAuth()
-	if err != nil {
-		jReq.responseChan <- &response{result: nil, err: err}
-		return
-	}
-	httpReq.SetBasicAuth(user, pass)
-
-	log.Tracef("Sending command [%s] with id %d", jReq.method, jReq.id)
-	c.sendPostRequest(httpReq, jReq)
-}
-
 // sendRequest sends the passed json request to the associated server using the
 // provided response channel for the reply.  It handles both websocket and HTTP
 // POST mode depending on the configuration of the client.
@@ -955,7 +949,7 @@ func (c *Client) sendRequest(jReq *jsonRequest) {
 				log.Warn(err)
 			}
 		} else {
-			c.sendPost(jReq)
+			c.sendPostRequest(jReq)
 		}
 		return
 	}
@@ -1662,7 +1656,7 @@ func (c *Client) sendAsync() FutureGetBulkResult {
 		marshalledJSON: marshalledRequest,
 		responseChan:   responseChan,
 	}
-	c.sendPost(&request)
+	c.sendPostRequest(&request)
 	return responseChan
 }
 

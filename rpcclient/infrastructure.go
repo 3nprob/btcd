@@ -88,13 +88,6 @@ const (
 	connectionRetryInterval = time.Second * 5
 )
 
-// sendPostDetails houses an HTTP POST request to send to an RPC server as well
-// as the original JSON-RPC command and a channel to reply on when the server
-// responds with the result.
-type sendPostDetails struct {
-	jsonRequest *jsonRequest
-}
-
 // jsonRequest holds information about a json request that is used to properly
 // detect, interpret, and deliver a reply to it.
 type jsonRequest struct {
@@ -182,7 +175,7 @@ type Client struct {
 
 	// Networking infrastructure.
 	sendChan        chan []byte
-	sendPostChan    chan *sendPostDetails
+	sendPostChan    chan *jsonRequest
 	connEstablished chan struct{}
 	disconnect      chan struct{}
 	shutdown        chan struct{}
@@ -764,9 +757,7 @@ out:
 // handleSendPostMessage handles performing the passed HTTP request, reading the
 // result, unmarshalling it, and delivering the unmarshalled result to the
 // provided response channel.
-func (c *Client) handleSendPostMessage(details *sendPostDetails) {
-	jReq := details.jsonRequest
-
+func (c *Client) handleSendPostMessage(jReq *jsonRequest) {
 	protocol := "http"
 	if !c.config.DisableTLS {
 		protocol = "https"
@@ -862,8 +853,8 @@ out:
 		// Send any messages ready for send until the shutdown channel
 		// is closed.
 		select {
-		case details := <-c.sendPostChan:
-			c.handleSendPostMessage(details)
+		case jReq := <-c.sendPostChan:
+			c.handleSendPostMessage(jReq)
 
 		case <-c.shutdown:
 			break out
@@ -875,8 +866,8 @@ out:
 cleanup:
 	for {
 		select {
-		case details := <-c.sendPostChan:
-			details.jsonRequest.responseChan <- &response{
+		case jReq := <-c.sendPostChan:
+			jReq.responseChan <- &response{
 				result: nil,
 				err:    ErrClientShutdown,
 			}
@@ -903,9 +894,7 @@ func (c *Client) sendPostRequest(jReq *jsonRequest) {
 
 	log.Tracef("Sending command [%s] with id %d", jReq.method, jReq.id)
 
-	c.sendPostChan <- &sendPostDetails{
-		jsonRequest: jReq,
-	}
+	c.sendPostChan <- jReq
 }
 
 // newFutureError returns a new future result channel that already has the
@@ -1434,7 +1423,7 @@ func New(config *ConnConfig, ntfnHandlers *NotificationHandlers) (*Client, error
 		ntfnHandlers:    ntfnHandlers,
 		ntfnState:       newNotificationState(),
 		sendChan:        make(chan []byte, sendBufferSize),
-		sendPostChan:    make(chan *sendPostDetails, sendPostBufferSize),
+		sendPostChan:    make(chan *jsonRequest, sendPostBufferSize),
 		connEstablished: connEstablished,
 		disconnect:      make(chan struct{}),
 		shutdown:        make(chan struct{}),

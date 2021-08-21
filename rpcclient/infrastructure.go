@@ -773,12 +773,9 @@ func (c *Client) handleSendPostMessage(details *sendPostDetails) {
 	}
 	url := protocol + "://" + c.config.Host
 
-	// httpResponse, err := c.httpClient.Do(details.httpRequest)
-	/////////
 	var err error
 	var backoff time.Duration
 	var httpResponse *http.Response
-	fmt.Println("!!preloop")
 	tries := 10
 	for i := 0; tries == 0 || i < tries; i++ {
 		bodyReader := bytes.NewReader(jReq.marshalledJSON)
@@ -800,7 +797,6 @@ func (c *Client) handleSendPostMessage(details *sendPostDetails) {
 			return
 		}
 		httpReq.SetBasicAuth(user, pass)
-		fmt.Println(fmt.Sprintf("## sending command [%s] with id %d\n", jReq.method, jReq.id))
 
 		httpResponse, err = c.httpClient.Do(httpReq)
 		if err != nil {
@@ -808,15 +804,13 @@ func (c *Client) handleSendPostMessage(details *sendPostDetails) {
 			if backoff > time.Minute {
 				backoff = time.Minute
 			}
-			fmt.Println(err.Error())
-			fmt.Println(fmt.Sprintf("# failed command [%s] with id %d attempt %d. Retrying ... \n", jReq.method, jReq.id, i))
+			log.Debugf("Failed command [%s] with id %d attempt %d. Retrying in %v... \n", jReq.method, jReq.id, i, backoff)
 			time.Sleep(backoff)
 			continue
 		}
 		break
 	}
 	if err != nil {
-		/////////////
 		jReq.responseChan <- &response{err: err}
 		return
 	}

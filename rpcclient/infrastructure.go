@@ -773,15 +773,12 @@ func (c *Client) handleSendPostMessage(details *sendPostDetails) {
 	}
 	url := protocol + "://" + c.config.Host
 
-
-
-
 	// httpResponse, err := c.httpClient.Do(details.httpRequest)
 	/////////
 	var err error
 	var backoff time.Duration
 	var httpResponse *http.Response
-	fmt.Println("preloop")
+	fmt.Println("!!preloop")
 	tries := 10
 	for i := 0; tries == 0 || i < tries; i++ {
 		bodyReader := bytes.NewReader(jReq.marshalledJSON)
@@ -803,7 +800,7 @@ func (c *Client) handleSendPostMessage(details *sendPostDetails) {
 			return
 		}
 		httpReq.SetBasicAuth(user, pass)
-		fmt.Println(fmt.Sprintf("# sending command [%s] with id %d\n", jReq.method, jReq.id))
+		fmt.Println(fmt.Sprintf("## sending command [%s] with id %d\n", jReq.method, jReq.id))
 
 		httpResponse, err = c.httpClient.Do(httpReq)
 		if err != nil {
@@ -816,6 +813,7 @@ func (c *Client) handleSendPostMessage(details *sendPostDetails) {
 			time.Sleep(backoff)
 			continue
 		}
+		break
 	}
 	if err != nil {
 		/////////////

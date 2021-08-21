@@ -767,9 +767,28 @@ out:
 // provided response channel.
 func (c *Client) handleSendPostMessage(details *sendPostDetails) {
 	jReq := details.jsonRequest
-	log.Tracef("Sending command [%s] with id %d", jReq.method, jReq.id)
-	httpResponse, err := c.httpClient.Do(details.httpRequest)
+	// httpResponse, err := c.httpClient.Do(details.httpRequest)
+	/////////
+	var err error
+	var backoff time.Duration
+	var httpResponse *http.Response
+	log.Tracef("preloop")
+	tries := 10
+	for i := 0; tries == 0 || i < tries; i++ {
+		log.Tracef("Sending command [%s] with id %d", jReq.method, jReq.id)
+		httpResponse, err = c.httpClient.Do(details.httpRequest)
+		if err != nil {
+			backoff = connectionRetryInterval * time.Duration(i+1)
+			if backoff > time.Minute {
+				backoff = time.Minute
+			}
+			log.Tracef("Failed command [%s] with id %d attempt %d. Retrying ... ", jReq.method, jReq.id, i)
+			time.Sleep(backoff)
+			continue
+		}
+	}
 	if err != nil {
+		/////////////
 		jReq.responseChan <- &response{err: err}
 		return
 	}

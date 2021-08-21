@@ -775,14 +775,15 @@ func (c *Client) handleSendPostMessage(details *sendPostDetails) {
 	fmt.Println("preloop")
 	tries := 10
 	for i := 0; tries == 0 || i < tries; i++ {
-		fmt.Println("Sending command [%s] with id %d", jReq.method, jReq.id)
+		fmt.Println(fmt.Sprintf("# sending command [%s] with id %d\n", jReq.method, jReq.id))
 		httpResponse, err = c.httpClient.Do(details.httpRequest.Clone(details.httpRequest.Context()))
 		if err != nil {
 			backoff = connectionRetryInterval * time.Duration(i+1)
 			if backoff > time.Minute {
 				backoff = time.Minute
 			}
-			fmt.Println("Failed command [%s] with id %d attempt %d. Retrying ... ", jReq.method, jReq.id, i)
+			fmt.Println(err.Error())
+			fmt.Println(fmt.Sprintf("# failed command [%s] with id %d attempt %d. Retrying ... \n", jReq.method, jReq.id, i))
 			time.Sleep(backoff)
 			continue
 		}
